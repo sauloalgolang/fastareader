@@ -14,6 +14,10 @@ import (
 )
 
 
+// http://www.golangbootcamp.com/book/tricks_and_tips
+// compile passing -ldflags "-X main.Build <build sha1>"
+var Build string
+
 
 import (
 	"github.com/sauloalgolang/fastareader/lib/fastaindex"
@@ -32,6 +36,12 @@ var (
 main: checks if index exists, creating it otherwise, read index and create a go routine to read each sequence
 */
 func main() {
+	if Build == "" {
+		Build = "unset"
+	}
+
+	log.Println("fastaindexer build:", Build)
+
 	argsWithoutProg := os.Args[1:]
 
 	if len(argsWithoutProg) != 1 {

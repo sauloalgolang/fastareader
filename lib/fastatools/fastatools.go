@@ -4,11 +4,11 @@ Package fastatools contains tools for fasta processing
 
 package fastatools
 
+
 import (
 	"bufio"
 	"bytes"
 	"errors"
-//	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -47,56 +47,87 @@ func (seqd *SeqData) Print () {
 
 
 /*
+ReadFileLineByLine: reads line by line using callback
+input             : fi   *os.File
+                    clbk func(*string)(res bool)
+*/
+func ReadFileLineByLine(fi *os.File, clbk func(*string)(res bool)) {
+	scanner  := bufio.NewScanner(fi)
+	scanner.Split(bufio.ScanLines)
+
+	for scanner.Scan() {
+		line     := scanner.Text()
+		res      := clbk(&line)
+		if ! res {
+			break
+		}
+  	}
+}
+
+
+/*
+readSeqFromFasta: read a fasta Sequence inside a file
+input           : file     *os.File
+return          : sd       *SeqData
+*/
+func readSeqFromFasta(file *os.File) (sd *SeqData) {
+	sd       = new(SeqData)
+
+	var buffer bytes.Buffer
+
+	processFastaLine := func( line *string ) ( res bool ){
+		if (*line)[0] == byte('>') {
+			if sd.SeqName == "" { // first
+				sd.SeqName = strings.TrimSpace((*line)[1:])
+				log.Println("Seq", sd.SeqName, "STARTING")
+				return true
+
+			} else { //next
+				log.Println("Seq", sd.SeqName, "DONE"    )
+				return false
+
+			}
+		} else {
+			if len(*line) != 0 {
+				buffer.WriteString(*line)
+			}
+
+			return true
+		}
+	}
+
+	ReadFileLineByLine(file, processFastaLine)
+
+	sd.Sequence = buffer.String()
+
+	return sd
+}
+
+
+/*
 ReadFastaSeq: read a fasta Sequence inside a file
 input       : filename string
               position string
-return      : *SeqData
+return      : sd       *SeqData
 */
-func ReadFastaSeq(filename string, position int64) *SeqData {
-        fi, err := os.Open(filename)
+func ReadFastaSeq(filename string, position int64) (sd *SeqData) {
+        file, err := os.Open(filename)
 	check(err)
-	defer fi.Close()
+	defer file.Close()
 
-        _, err  = fi.Stat()
+        _, err  = file.Stat()
 	check(err)
 
 	//log.Println(d)
 
-	pos, err := fi.Seek(position, 0)
+	_, err = file.Seek(position, 0)
 	check(err)
-	log.Println("new positions", pos)
 
-	scanner  := bufio.NewScanner(fi)
-	scanner.Split(bufio.ScanLines)
+	//log.Println("new positions", pos)
 
-	sd       := new(SeqData)
-
-	var buffer bytes.Buffer
-
-	for scanner.Scan() {
-		line     := scanner.Text()
-
-		if line[0] == byte('>') {
-			if sd.SeqName == "" { // first
-				sd.SeqName = strings.TrimSpace(line[1:])
-				log.Println("Seq", sd.SeqName)
-			} else { //next
-				log.Println("Seq", sd.SeqName, "DONE")
-				break
-			}
-		} else {
-			if len(line) != 0 {
-				//fmt.Print(".")
-				buffer.WriteString(line)
-				//sd.Sequence += line
-			}
-		}
-  	}
-
-	sd.Sequence = buffer.String()
+	sd = readSeqFromFasta(file)
 
 	sd.Print()
 
 	return sd
 }
-
