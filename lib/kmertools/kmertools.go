@@ -28,6 +28,11 @@ var (
 	ErrInvalidSeq = errors.New("kmertools: invalid fasta"  )
 )
 
+
+// Available output formats
+var AvailableFormats = [3]string{ "fasta", "list", "csv" }
+
+
 /*
 check : This helper will streamline our error checks below.
 src   : https://gobyexample.com/reading-files
@@ -252,6 +257,7 @@ func SaveKmers(outFileName string, as string, data map[string]int) {
 
 	os.Rename(outFileNameTmp, outFileName)
 }
+
 
 
 /*

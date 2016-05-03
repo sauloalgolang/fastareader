@@ -7,6 +7,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"flag"
 	"log"
 	"os"
 	"runtime"
@@ -38,8 +39,101 @@ input: e error
 func check(e error) {
         if e != nil {
                 log.Fatal( e )
-                panic(e)
+                //panic(e)
         }
+}
+
+
+var filename string
+var format   string
+var kmerSize int
+var threads  int
+func init() {
+	if Build != "" {
+		log.Println("kmerextracter build:", Build)
+	}
+
+
+
+	flag.StringVar(&filename, "filename",      "", "input fasta")
+	flag.StringVar(&format  , "format"  , "fasta", "format: fasta, csv, list" )
+	flag.IntVar(   &kmerSize, "kmersize",       0, "kmer size"  )
+	flag.IntVar(   &threads , "threads" ,       0, "number of threads. 0 for max"  )
+	flag.Parse()
+
+
+
+	if filename == "" {
+		flag.PrintDefaults()
+                log.Fatal("No input file given\n")
+	}
+
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		flag.PrintDefaults()
+                log.Fatal("Input file '" + filename + "' does not exist\n")
+	}
+
+	fi, err := os.Open(filename)
+	check(err)
+	//defer fi.Close()
+
+	st, err := fi.Stat()
+	check(err)
+	//log.Print(d)
+
+	// http://stackoverflow.com/questions/8824571/golang-determining-whether-file-points-to-file-or-directory
+	switch mode := st.Mode(); {
+		case mode.IsDir():
+			// do directory stuff
+			flag.PrintDefaults()
+			log.Fatal("File '"+filename+"' is a directory\n")
+	}
+	fi.Close()
+
+
+
+
+	fmatch := false
+	for _, fmt := range kmertools.AvailableFormats {
+		if format == fmt {
+			fmatch = true
+			break
+		}
+	}
+
+	if ! fmatch {
+		flag.PrintDefaults()
+		log.Println("Invalid format: '" + format)
+		log.Println("Possibilities are:")
+		for _, fmt := range kmertools.AvailableFormats {
+			log.Println("\t"+fmt)
+		}
+		os.Exit(1)
+	}
+
+
+
+	if kmerSize == 0 {
+		flag.PrintDefaults()
+		log.Fatal("No kmer size set\n")
+	}
+
+
+
+	var numCPU = runtime.GOMAXPROCS(0)
+	if threads < 0 {
+		flag.PrintDefaults()
+                log.Fatal("Number of threads (",threads,") must be greater or equalt to 0\n")
+	} else
+	if threads == 0 {
+		threads = numCPU
+	}
+
+	log.Println("threads",threads)
+
+	if threads > numCPU {
+		log.Println("Number of threads (", threads, ") greater than number of CPUs (", numCPU, "). expect slow downs")
+	}
 }
 
 
@@ -48,59 +142,10 @@ func check(e error) {
 main: checks if index exists, creating it otherwise, read index and create a go routine to read each sequence
 */
 func main() {
-	if Build != "" {
-		log.Println("kmerextracter build:", Build)
-	}
-
-
-	argsWithoutProg := os.Args[1:]
-
-
-        if len(argsWithoutProg) != 1 {
-                log.Println("no argument or too many arguments given")
-                os.Exit(1)
-        }
-
-
-        filename        := argsWithoutProg[0]
-
-	f, err := os.Open(filename)
-	check(err)
-	defer f.Close()
-
-	_, err = f.Stat()
-	check(err)
-	//log.Print(d)
-
-
-	kmerSize        := 5
-
-	format          := "fasta"
-
-	outFileName     := fmt.Sprintf("%s_%d.kmers.%s",filename, kmerSize, format)
-
-
-	var numCPU = runtime.GOMAXPROCS(0)
-	numCPU = 1
-
-	log.Println("numCPU",numCPU)
-
-
-	idxName         := filename + ".idx"
-
-
-	if _, err := os.Stat(idxName); os.IsNotExist(err) {
-		log.Println("Index does not exists. creating")
-		fastaindex.CreateFastaIndex(filename)
-	} else {
-		log.Println("Index alread exists")
-	}
-
-
 	log.Println("Reading Index")
 
 
-	idxData         := fastaindex.ReadFastaIndex(filename)
+	idxData         := fastaindex.ReadFastaIndexCreatingIfNotExists(filename)
 	//seqData         := make([]*fastatools.SeqData, len(*idxData))
 
 
@@ -109,10 +154,11 @@ func main() {
 	}
 
 
+
 	log.Println("Reading File")
-	limit           := make(chan int, numCPU)
-	waiter          := make(chan int        )
-	data            := make(map[string]int  )
+	limit           := make(chan int, threads)
+	waiter          := make(chan int         )
+	data            := make(map[string]int   )
 
 	for _, idx := range *idxData {
 		//idx.Print()
@@ -158,9 +204,8 @@ func main() {
 	log.Println("Kmers", len(data))//, data)
 
 
+	outFileName     := fmt.Sprintf("%s_%d.kmers.%s", filename, kmerSize, format)
 	log.Println("Saving to", outFileName)
-
-
 	kmertools.SaveKmers(outFileName, format, data)
 
 

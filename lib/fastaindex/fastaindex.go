@@ -23,6 +23,7 @@ var (
 )
 
 
+
 /*
 check: This helper will streamline our error checks below.
 src  : https://gobyexample.com/reading-files
@@ -64,6 +65,24 @@ func (idx *IdxData) Read (line string) {
 
 
 /*
+CreateFastaIndexIfNotExists: create fasta index if it does not exists already
+inputs                     : filename string
+creates                    : filename.idx
+*/
+func CreateFastaIndexIfNotExists(filename string) {
+	idxName    := filename+".idx"
+
+        if _, err := os.Stat(idxName); os.IsNotExist(err) {
+                log.Println("Index does not exists. creating")
+                CreateFastaIndex(filename)
+        } else {
+                log.Println("Index alread exists")
+        }
+}
+
+
+
+/*
 CreateFastaIndex: index a fasta file
 input           : filename string
 creates         : filename.idx
@@ -73,10 +92,10 @@ func CreateFastaIndex(filename string) {
 	check(err)
 	defer fi.Close()
 
-        d, err := fi.Stat()
+        _, err   = fi.Stat()
 	check(err)
 
-	log.Println(d)
+	//log.Println(d)
 
 	// open output file
 	idxName    := filename+".idx"
@@ -125,9 +144,21 @@ func CreateFastaIndex(filename string) {
 
 
 /*
+ReadFastaIndexCreatingIfNotExists: read fasta index, creating it first if it does not exists
+inputs                           : filename string
+outputs                          : *[]*IdxData
+*/
+func ReadFastaIndexCreatingIfNotExists(filename string) *[]*IdxData {
+	CreateFastaIndexIfNotExists(filename)
+	return ReadFastaIndex(filename)
+}
+
+
+
+/*
 ReadFastaIndex: reads a fasta index
 input         : filename string
-returns       : IdxData
+returns       : *[]*IdxData
 */
 func ReadFastaIndex(filename string) *[]*IdxData {
 	idxName    := filename+".idx"
