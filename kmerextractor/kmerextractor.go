@@ -55,7 +55,6 @@ func main() {
 
 	argsWithoutProg := os.Args[1:]
 
-	kmerSize        := 5
 
         if len(argsWithoutProg) != 1 {
                 log.Println("no argument or too many arguments given")
@@ -74,13 +73,22 @@ func main() {
 	//log.Print(d)
 
 
+	kmerSize        := 5
+
+	format          := "fasta"
+
+	outFileName     := fmt.Sprintf("%s_%d.kmers.%s",filename, kmerSize, format)
+
+
 	var numCPU = runtime.GOMAXPROCS(0)
 	numCPU = 1
 
 	log.Println("numCPU",numCPU)
 
 
-	idxName := filename + ".idx"
+	idxName         := filename + ".idx"
+
+
 	if _, err := os.Stat(idxName); os.IsNotExist(err) {
 		log.Println("Index does not exists. creating")
 		fastaindex.CreateFastaIndex(filename)
@@ -88,10 +96,13 @@ func main() {
 		log.Println("Index alread exists")
 	}
 
+
 	log.Println("Reading Index")
 
-	idxData := fastaindex.ReadFastaIndex(filename)
-	//seqData := make([]*fastatools.SeqData, len(*idxData))
+
+	idxData         := fastaindex.ReadFastaIndex(filename)
+	//seqData         := make([]*fastatools.SeqData, len(*idxData))
+
 
 	for _, idx := range *idxData {
 		idx.Print()
@@ -99,19 +110,23 @@ func main() {
 
 
 	log.Println("Reading File")
-	var limit   = make(chan int, numCPU)
-	var waiter  = make(chan int)
-	data       := make(map[string]int)
+	limit           := make(chan int, numCPU)
+	waiter          := make(chan int        )
+	data            := make(map[string]int  )
+
 	for _, idx := range *idxData {
 		//idx.Print()
 
 		f := func (idx2 *fastaindex.IdxData) {
 			seqd := fastatools.ReadFastaSeq(filename, idx2.SeqPos)
+
 			log.Printf("RES: IDX: NAME '%s' ID %d SIZE %d POSITION %d FASTA: NAME '%s' SIZE %d\n", idx2.SeqName, idx2.SeqId, idx2.SeqSize, idx2.SeqPos, seqd.SeqName, seqd.Size())
+
 			if (( idx2.SeqName != seqd.SeqName ) || (idx2.SeqSize != seqd.Size())) {
 				log.Fatal(fmt.Sprintf("Sequence mismatch. expexted '%s', found '%s'. Expected size %d, found %d", idx2.SeqName, seqd.SeqName, idx2.SeqSize, seqd.Size()))
 				os.Exit(1)
 			}
+
 			//seqData[idx2.SeqId - 1] = seqd
 			kmertools.ExtractKmers(seqd, kmerSize, data)
 
@@ -128,14 +143,28 @@ func main() {
 		}(f, idx)
 	}
 
+
 	log.Println("Waiting")
+
 
 	for i := 1; i <= len(*idxData); i++ {
 		<-waiter
 	}
 
+
+	log.Println("Done Counting")
+
+
+	log.Println("Kmers", len(data))//, data)
+
+
+	log.Println("Saving to", outFileName)
+
+
+	kmertools.SaveKmers(outFileName, format, data)
+
+
 	log.Println("Done")
-	log.Println("Kmers", len(data), data)
 
 	/*
 	for _, seq := range seqData {

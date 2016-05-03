@@ -65,8 +65,8 @@ func (idx *IdxData) Read (line string) {
 
 /*
 CreateFastaIndex: index a fasta file
-input         : filename string
-creates       : filename.idx
+input           : filename string
+creates         : filename.idx
 */
 func CreateFastaIndex(filename string) {
         fi, err := os.Open(filename)
@@ -121,6 +121,8 @@ func CreateFastaIndex(filename string) {
 	fo.Close()
 	os.Rename(idxNameTmp, idxName)
 }
+
+
 
 /*
 ReadFastaIndex: reads a fasta index

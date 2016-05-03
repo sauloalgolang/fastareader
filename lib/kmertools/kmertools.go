@@ -10,8 +10,9 @@ import (
 //	"bufio"
 //	"bytes"
 	"errors"
+	"fmt"
 	"log"
-//	"os"
+	"os"
 	"strings"
 	"unicode"
 )
@@ -28,9 +29,9 @@ var (
 )
 
 /*
-check: This helper will streamline our error checks below.
-src  : https://gobyexample.com/reading-files
-input: e error
+check : This helper will streamline our error checks below.
+src   : https://gobyexample.com/reading-files
+inputs: e error
 */
 func check(e error) {
 	if e != nil {
@@ -38,6 +39,7 @@ func check(e error) {
 		panic(e)
 	}
 }
+
 
 
 /*
@@ -64,12 +66,26 @@ var complement = [256]uint8{
 }
 */
 
+
+
+/*
+ToUpper: convert rune slice to uppercase
+inputs : r []rune
+*/
 func ToUpper(r []rune) {
     for i, v := range r {
         r[i] = unicode.ToUpper(v)
     }
 }
 
+
+
+/*
+Map    : runs a function to all elements of a slice, returning a new slice
+inputs : f func(rune) rune
+         vs []rune
+outputs: []rune
+*/
 func Map(f func(rune) rune, vs []rune) ([]rune) {
     vsm := make([]rune, len(vs))
     for i, v := range vs {
@@ -78,8 +94,15 @@ func Map(f func(rune) rune, vs []rune) ([]rune) {
     return vsm
 }
 
-//https://golang.org/pkg/strings/#Map
-func rcer(r rune) rune {
+
+
+/*
+rcer   : completement a rune nucleotide, returning a rune
+inputs : r rune
+outputs: rune
+src    : https://golang.org/pkg/strings/#Map
+*/
+func rcer(r rune) (rune) {
 	switch {
 		case r == 'A': return 'T'
 		case r == 'C': return 'G'
@@ -89,13 +112,28 @@ func rcer(r rune) rune {
 	return r
 }
 
-//http://golangcookbook.com/chapters/arrays/reverse/
+
+
+/*
+Reverse: reverses a rune slice inplace
+inputs : sequence []rune
+src    : http://golangcookbook.com/chapters/arrays/reverse/
+*/
 func Reverse(sequence []rune) {
 	for i, j := 0, len(sequence)-1; i < j; i, j = i+1, j-1 {
 		sequence[i], sequence[j] = sequence[j], sequence[i]
 	}
 }
 
+
+
+/*
+IsInSlice: checks whether a rune is present in a slice
+inputs   : a rune
+           list []rune
+outputs  : bool
+src      : http://stackoverflow.com/questions/15323767/does-golang-have-if-x-in-construct-similar-to-python
+*/
 func IsInSlice(a rune, list []rune) bool {
     for _, b := range list {
         if b == a {
@@ -105,8 +143,10 @@ func IsInSlice(a rune, list []rune) bool {
     return false
 }
 
+
+
 /*
-ExtractKmers: Extract kmers
+ExtractKmers: Extract kmers, storing them in data
 input       : seqd     *fastatools.SeqData
               kmerSize int
               data     map[string]int
@@ -142,6 +182,7 @@ func ExtractKmers(seqd *fastatools.SeqData, kmerSize int, data map[string]int) {
 		if seqLen > 1000 {
 			if (fStart != 0) && (fStart % (seqLen/10) == 0) {
 				log.Printf("Start %12d %3.0f%%\n", fStart, ((float64(fStart)/float64(seqLen))*float64(100)))
+				break
 			}
 		}
 
@@ -174,6 +215,43 @@ func ExtractKmers(seqd *fastatools.SeqData, kmerSize int, data map[string]int) {
 	log.Println("EXTRACTING KMER FROM:", seqd.SeqName, " :: DONE :: KMERS", len(data))
 }
 
+
+
+/*
+SaveKmers: save data into a fasta in a given format
+inputs   : outFileName string
+           as          string
+           data        map[string]int
+*/
+func SaveKmers(outFileName string, as string, data map[string]int) {
+	outFileNameTmp := outFileName + ".tmp"
+
+	fo, err        := os.Create(outFileNameTmp)
+	check(err)
+	defer func() {
+		os.Remove(outFileNameTmp)
+	}()
+	defer fo.Close()
+
+	i := 0
+	for k, v := range data {
+		i++
+
+		if as == "fasta" {
+			fmt.Fprintf(fo, ">%d count: %d\n%s\n\n", i, v, k)
+		} else
+		if as == "list"  {
+			fmt.Fprintf(fo, "%s\n", k)
+		} else
+		if as == "csv"  {
+			fmt.Fprintf(fo, "%s\t%d\n", k, v)
+		}
+	}
+
+	fo.Close()
+
+	os.Rename(outFileNameTmp, outFileName)
+}
 
 
 /*

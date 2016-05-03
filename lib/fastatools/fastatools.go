@@ -20,6 +20,7 @@ var (
 	ErrInvalidSeq = errors.New("fastatools: invalid fasta"  )
 )
 
+
 /*
 check: This helper will streamline our error checks below.
 src  : https://gobyexample.com/reading-files
