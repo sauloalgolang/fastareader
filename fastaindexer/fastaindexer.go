@@ -7,22 +7,20 @@ package main
 
 import (
 	"errors"
-//	"fmt"
-//	"io"
 	"log"
 	"os"
 )
-
-
-// http://www.golangbootcamp.com/book/tricks_and_tips
-// compile passing -ldflags "-X main.Build <build sha1>"
-var Build string
 
 
 import (
 	"github.com/sauloalgolang/fastareader/lib/fastaindex"
 //	"github.com/sauloalgolang/fastareader/lib/fastatools"
 )
+
+
+// http://www.golangbootcamp.com/book/tricks_and_tips
+// compile passing -ldflags "-X main.Build <build sha1>"
+var Build string
 
 
 // Error codes returned by failures to parse

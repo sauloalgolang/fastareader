@@ -1,5 +1,5 @@
 /*
-Package fastareader reads a fasta file using go routines
+Package kmerextracter reads a fasta file using go routines
 */
 
 package main
@@ -7,7 +7,6 @@ package main
 import (
 	"errors"
 	"fmt"
-//	"io"
 	"log"
 	"os"
 	"runtime"
@@ -17,6 +16,7 @@ import (
 import (
 	"github.com/sauloalgolang/fastareader/lib/fastaindex"
 	"github.com/sauloalgolang/fastareader/lib/fastatools"
+	"github.com/sauloalgolang/fastareader/lib/kmertools"
 )
 
 // http://www.golangbootcamp.com/book/tricks_and_tips
@@ -49,11 +49,13 @@ main: checks if index exists, creating it otherwise, read index and create a go 
 */
 func main() {
 	if Build != "" {
-		log.Println("fastareader build:", Build)
+		log.Println("kmerextracter build:", Build)
 	}
 
 
 	argsWithoutProg := os.Args[1:]
+
+	kmerSize        := 5
 
         if len(argsWithoutProg) != 1 {
                 log.Println("no argument or too many arguments given")
@@ -73,6 +75,7 @@ func main() {
 
 
 	var numCPU = runtime.GOMAXPROCS(0)
+	numCPU = 1
 
 	log.Println("numCPU",numCPU)
 
@@ -88,7 +91,7 @@ func main() {
 	log.Println("Reading Index")
 
 	idxData := fastaindex.ReadFastaIndex(filename)
-	seqData := make([]*fastatools.SeqData, len(*idxData))
+	//seqData := make([]*fastatools.SeqData, len(*idxData))
 
 	for _, idx := range *idxData {
 		idx.Print()
@@ -96,8 +99,9 @@ func main() {
 
 
 	log.Println("Reading File")
-	var limit  = make(chan int, numCPU)
-	var waiter = make(chan int)
+	var limit   = make(chan int, numCPU)
+	var waiter  = make(chan int)
+	data       := make(map[string]int)
 	for _, idx := range *idxData {
 		//idx.Print()
 
@@ -108,7 +112,11 @@ func main() {
 				log.Fatal(fmt.Sprintf("Sequence mismatch. expexted '%s', found '%s'. Expected size %d, found %d", idx2.SeqName, seqd.SeqName, idx2.SeqSize, seqd.Size()))
 				os.Exit(1)
 			}
-			seqData[idx2.SeqId - 1] = seqd
+			//seqData[idx2.SeqId - 1] = seqd
+			kmertools.ExtractKmers(seqd, kmerSize, data)
+
+			seqd.Sequence = make([]rune,0)
+
 			waiter <- 1
 		}
 
@@ -127,8 +135,11 @@ func main() {
 	}
 
 	log.Println("Done")
+	log.Println("Kmers", len(data), data)
 
+	/*
 	for _, seq := range seqData {
 		seq.Print()
 	}
+	*/
 }

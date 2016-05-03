@@ -34,7 +34,7 @@ func check(e error) {
 
 type SeqData struct {
 	SeqName  string
-	Sequence string
+	Sequence []rune
 }
 
 func (seqd *SeqData) Size() (size int64) {
@@ -96,9 +96,11 @@ func readSeqFromFasta(file *os.File) (sd *SeqData) {
 		}
 	}
 
+	log.Println("Seq", sd.SeqName, "READING")
 	ReadFileLineByLine(file, processFastaLine)
 
-	sd.Sequence = buffer.String()
+	log.Println("Seq", sd.SeqName, "CONVERTING")
+	sd.Sequence = []rune(buffer.String())
 
 	return sd
 }
