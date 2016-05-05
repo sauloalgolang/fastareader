@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -35,7 +36,7 @@ func check(e error) {
 
 type SeqData struct {
 	SeqName  string
-	Sequence []rune
+	Sequence []byte
 }
 
 func (seqd *SeqData) Size() (size int64) {
@@ -45,6 +46,34 @@ func (seqd *SeqData) Size() (size int64) {
 func (seqd *SeqData) Print () {
 	log.Printf("SeqData: NAME '%s' SIZE %d\n", seqd.SeqName, seqd.Size())
 }
+
+func (seqd *SeqData) SaveToFasta(fo *os.File) {
+        fmt.Fprintf(fo, ">%s\n", seqd.SeqName)
+
+	leng := len(seqd.Sequence)
+
+	start := 0
+	end   := 80
+	sum   := 0
+
+	for ; start < leng; start += 80 {
+		end = start + 80
+
+		if end >= leng {
+			end = leng
+		}
+
+		if end != start {
+			frag := string(seqd.Sequence[start:end])
+        		fmt.Fprintf(fo, frag + "\n")
+			sum  += len(frag)
+		}
+	}
+
+	log.Println( "LENG", leng )
+	log.Println( "SUM ", sum  )
+}
+
 
 
 /*
@@ -101,9 +130,24 @@ func readSeqFromFasta(file *os.File) (sd *SeqData) {
 	ReadFileLineByLine(file, processFastaLine)
 
 	log.Println("Seq", sd.SeqName, "CONVERTING")
-	sd.Sequence = []rune(buffer.String())
+	sd.Sequence = []byte(buffer.String())
 
 	return sd
+}
+
+func OpenAndSeek(filename string, position int64) (file *os.File) {
+        file, err := os.Open(filename)
+	check(err)
+
+        _, err  = file.Stat()
+	check(err)
+
+	//log.Println(d)
+
+	_, err = file.Seek(position, 0)
+	check(err)
+
+	return file
 }
 
 
@@ -114,23 +158,59 @@ input       : filename string
 return      : sd       *SeqData
 */
 func ReadFastaSeq(filename string, position int64) (sd *SeqData) {
-        file, err := os.Open(filename)
-	check(err)
+	file := OpenAndSeek(filename, position)
 	defer file.Close()
-
-        _, err  = file.Stat()
-	check(err)
-
-	//log.Println(d)
-
-	_, err = file.Seek(position, 0)
-	check(err)
 
 	//log.Println("new positions", pos)
 
-	sd = readSeqFromFasta(file)
+	sd   = readSeqFromFasta(file)
 
 	sd.Print()
 
 	return sd
+}
+
+
+
+//func(string)bool
+func ReadFastaSeqIter(filename string, position int64, clbk func(*string)bool) {
+	file := OpenAndSeek(filename, position)
+	defer file.Close()
+
+	log.Println("ReadFastaSeqIter :: filename:", filename, "position:", position)
+
+	//kmertools.GetExtractKmersIterClbk( kmerSize, data))
+
+	ReadFileLineByLine(file, clbk)
+
+	log.Println("ReadFastaSeqIter :: filename:", filename, "position:", position, "DONE")
+}
+
+
+func GetPipeFastaBackClbk( of *os.File ) func(*string)bool {
+	seqName               := ""
+
+	pipeFastaBackIterClbk := func(line *string)bool {
+                if (*line)[0] == '>' {
+                        if seqName == "" { // first
+                                seqName = strings.TrimSpace((*line)[1:])
+                                log.Println("Seq", seqName, "STARTING")
+				of.WriteString( string(*line) + "\n" )
+                                return true
+
+                        } else { //next
+                                log.Println("Seq", seqName, "DONE"    )
+                                return false
+
+                        }
+                } else {
+                        if len(*line) != 0 {
+				of.WriteString( string(*line) + "\n" )
+                        }
+
+                        return true
+                }
+	}
+
+	return pipeFastaBackIterClbk
 }

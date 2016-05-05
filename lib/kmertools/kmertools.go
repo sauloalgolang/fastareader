@@ -14,7 +14,9 @@ import (
 	"log"
 	"os"
 	"strings"
-	"unicode"
+	"sync"
+	"math"
+//	"unicode"
 )
 
 
@@ -73,26 +75,16 @@ var complement = [256]uint8{
 
 
 
-/*
-ToUpper: convert rune slice to uppercase
-inputs : r []rune
-*/
-func ToUpper(r []rune) {
-    for i, v := range r {
-        r[i] = unicode.ToUpper(v)
-    }
-}
-
 
 
 /*
 Map    : runs a function to all elements of a slice, returning a new slice
-inputs : f func(rune) rune
-         vs []rune
-outputs: []rune
+inputs : f func(byte) byte
+         vs []byte
+outputs: []byte
 */
-func Map(f func(rune) rune, vs []rune) ([]rune) {
-    vsm := make([]rune, len(vs))
+func Map(f func(byte) byte, vs []byte) ([]byte) {
+    vsm := make([]byte, len(vs))
     for i, v := range vs {
         vsm[i] = f(v)
     }
@@ -102,44 +94,68 @@ func Map(f func(rune) rune, vs []rune) ([]rune) {
 
 
 /*
-rcer   : completement a rune nucleotide, returning a rune
-inputs : r rune
-outputs: rune
+rcer   : completement a byte nucleotide, returning a byte
+inputs : r byte
+outputs: byte
 src    : https://golang.org/pkg/strings/#Map
 */
-func rcer(r rune) (rune) {
+func rcer(r byte) (byte) {
 	switch {
 		case r == 'A': return 'T'
+		case r == 'a': return 'T'
+
 		case r == 'C': return 'G'
+		case r == 'c': return 'G'
+
 		case r == 'G': return 'C'
+		case r == 'g': return 'C'
+
 		case r == 'T': return 'A'
+		case r == 't': return 'A'
+
+		case r == 'N': return 'N'
+		case r == 'n': return 'N'
 	}
+	log.Panic("unknown byte", string(r), " ", r)
 	return r
 }
 
 
 
 /*
-Reverse: reverses a rune slice inplace
-inputs : sequence []rune
+Reverse: reverses a byte slice inplace
+inputs : sequence []byte
 src    : http://golangcookbook.com/chapters/arrays/reverse/
 */
-func Reverse(sequence []rune) {
+func Reverse(sequence []byte) {
 	for i, j := 0, len(sequence)-1; i < j; i, j = i+1, j-1 {
 		sequence[i], sequence[j] = sequence[j], sequence[i]
 	}
 }
 
 
+func ReverseComplement(src []byte) ([]byte) {
+	dst := make([]byte, len(src))
+
+	ls  := len(src)
+
+	for i := 0; i < ls; i++ {
+		dst[i] = rcer(src[ls-i-1])
+	}
+
+	return dst
+}
+
+
 
 /*
-IsInSlice: checks whether a rune is present in a slice
-inputs   : a rune
-           list []rune
+IsInSlice: checks whether a byte is present in a slice
+inputs   : a byte
+           list []byte
 outputs  : bool
 src      : http://stackoverflow.com/questions/15323767/does-golang-have-if-x-in-construct-similar-to-python
 */
-func IsInSlice(a rune, list []rune) bool {
+func IsInSlice(a byte, list []byte) bool {
     for _, b := range list {
         if b == a {
             return true
@@ -150,29 +166,125 @@ func IsInSlice(a rune, list []rune) bool {
 
 
 
+
+
+// https://tour.golang.org/concurrency/9
+// SafeCounter is safe to use concurrently.
+type Data struct {
+	v       map[string]int
+	Total   uint64
+	MaxSize int
+	mux     sync.RWMutex
+}
+
+// http://stackoverflow.com/questions/4498998/how-to-initialize-members-in-go-struct
+func (c *Data) New(kmerSize int) {
+    c.MaxSize = int(math.Pow(4,float64(kmerSize))/2)
+    c.v       = make(map[string]int, c.MaxSize)
+}
+
+// Inc increments the counter for the given key.
+func (c *Data) Inc(key string) {
+	c.mux.Lock()
+	// Lock so only one goroutine at a time can access the map c.v.
+	c.v[key]++
+	c.Total++
+
+	if len(c.v) > c.MaxSize {
+		log.Panic(key)
+	}
+
+	c.mux.Unlock()
+
+	if (c.Total % 10000000) == 0 {
+		log.Println("Total Kmers:", c.Total, "Unique", len(c.v))
+	}
+}
+
+// Value returns the current value of the counter for the given key.
+func (c *Data) Value(key string) int {
+	c.mux.Lock()
+	// Lock so only one goroutine at a time can access the map c.v.
+	defer c.mux.Unlock()
+	return c.v[key]
+}
+
+func (c *Data) Len() int {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	return len(c.v)
+}
+
+/*
+SaveKmers: save data into a fasta in a given format
+inputs   : outFileName string
+           as          string
+           data        map[string]int
+*/
+func (c *Data) SaveAs(outFileName string, as string) {
+	outFileNameTmp := outFileName + ".tmp"
+
+	//log.Println(c)
+
+	fo, err        := os.Create(outFileNameTmp)
+	check(err)
+	defer func() {
+		os.Remove(outFileNameTmp)
+	}()
+	defer fo.Close()
+
+	i := 0
+	for k, v := range c.v {
+		i++
+
+		//log.Println(i,v,k)
+
+		if as == "fasta" {
+			fmt.Fprintf(fo, ">%d count: %d\n%s\n\n", i, v, k)
+		} else
+		if as == "list"  {
+			fmt.Fprintf(fo, "%s\n", k)
+		} else
+		if as == "csv"   {
+			fmt.Fprintf(fo, "%s\t%d\n", k, v)
+		}
+	}
+
+	fo.Close()
+
+	os.Rename(outFileNameTmp, outFileName)
+}
+
+
+
 /*
 ExtractKmers: Extract kmers, storing them in data
 input       : seqd     *fastatools.SeqData
               kmerSize int
               data     map[string]int
 */
-func ExtractKmers(seqd *fastatools.SeqData, kmerSize int, data map[string]int) {
-	seqLen   := len(seqd.Sequence)
 
-	log.Println("EXTRACTING KMER FROM:", seqd.SeqName, " :: LENGTH", seqLen, "KMER SIZE", kmerSize)
+func ExtractKmers(seqd *fastatools.SeqData, kmerSize int, data *Data) {
+	ExtractKmersFromSeq(seqd.Sequence, seqd.SeqName, kmerSize, data)
+}
 
-	log.Println("EXTRACTING KMER FROM:", seqd.SeqName, " :: UPPERING")
-	ToUpper(seqd.Sequence)
 
-	log.Println("EXTRACTING KMER FROM:", seqd.SeqName, " :: COMPLEMENTING")
-	rc := Map(rcer, seqd.Sequence)
-	log.Println("EXTRACTING KMER FROM:", seqd.SeqName, " :: REVERSING")
-	Reverse(rc)
 
-	log.Println("EXTRACTING KMER FROM:", seqd.SeqName, " :: FWD:", string(seqd.Sequence[0:10]), "-", string(seqd.Sequence[len(seqd.Sequence)-10:]))
-	log.Println("EXTRACTING KMER FROM:", seqd.SeqName, " :: RCP:", string(           rc[0:10]), "-", string(           rc[len(rc           )-10:]))
 
-	log.Println("EXTRACTING KMER FROM:", seqd.SeqName, " :: COUNTING")
+/*
+ExtractKmers: Extract kmers, storing them in data
+input       : seqd     *fastatools.SeqData
+              kmerSize int
+              data     map[string]int
+*/
+func ExtractKmersFromSeq(sequence []byte, seqName string, kmerSize int, data *Data) {
+	if len(sequence) < kmerSize {
+		return
+	}
+
+	seqLen  := len(sequence)
+
+	rc      := ReverseComplement(sequence)
 
 	fwd     := ""
 	rev     := ""
@@ -183,80 +295,107 @@ func ExtractKmers(seqd *fastatools.SeqData, kmerSize int, data map[string]int) {
 	fEnd    := 0
 	rEnd    := 0
 
+	hadN    := true
+
 	for fStart = 0; fStart < (seqLen-kmerSize+1); fStart++ {
-		if seqLen > 1000 {
-			if (fStart != 0) && (fStart % (seqLen/10) == 0) {
-				log.Printf("Start %12d %3.0f%%\n", fStart, ((float64(fStart)/float64(seqLen))*float64(100)))
-				break
+		fEnd   = fStart + kmerSize
+		fwd    = string(sequence[fStart:fEnd])
+
+		if ( hadN ) {
+			hadN = false
+			for _, n := range fwd {
+				if ! ( n == 'A' || n == 'C' || n == 'G' || n == 'T' ) {
+					hadN = true
+					break
+				}
+			}
+			if hadN {
+				continue
+			}
+		} else {
+			n := fwd[kmerSize-1]
+			if ! ( n == 'A' || n == 'C' || n == 'G' || n == 'T' ) {
+				hadN = true
+				continue
 			}
 		}
 
-		fEnd   = fStart + kmerSize
-		fwd    = string(seqd.Sequence[fStart:fEnd])
-
-		if ! strings.ContainsRune(fwd, 'N') {
-
 		rStart = seqLen - fStart   - kmerSize
 		rEnd   = rStart + kmerSize
-		rev    = string(rc[           rStart:rEnd])
+		rev    = string(rc[      rStart:rEnd])
 
 		/*
-		log.Printf( "fStart %12d fEnd %12d fwd %s", fStart, fEnd, fwd)
-		log.Printf( "rStart %12d rEnd %12d rev %s", rStart, rEnd, rev)
+		if p {
+		log.Printf( "%s", sequence)
+		log.Printf( "%s", rc      )
+		log.Printf( "fStart %12d fEnd %12d len %d fwd %s", fStart, fEnd, len(fwd), fwd)
+		log.Println( []byte(fwd) )
+		log.Printf( "rStart %12d rEnd %12d len %d rev %s", rStart, rEnd, len(rev), rev)
+		log.Println( []byte(rev) )
 		log.Println("smaller", (fwd<rev))
 		log.Println()
+		}
 		*/
 
 		if fwd<rev {
-			data[fwd] += 1
+			data.Inc(fwd)
 		} else {
-			data[rev] += 1
-		}
-
+			data.Inc(rev)
 		}
 	}
-
-	//log.Print(data)
-	log.Println("EXTRACTING KMER FROM:", seqd.SeqName, " :: DONE :: KMERS", len(data))
 }
 
 
 
-/*
-SaveKmers: save data into a fasta in a given format
-inputs   : outFileName string
-           as          string
-           data        map[string]int
-*/
-func SaveKmers(outFileName string, as string, data map[string]int) {
-	outFileNameTmp := outFileName + ".tmp"
 
-	fo, err        := os.Create(outFileNameTmp)
-	check(err)
-	defer func() {
-		os.Remove(outFileNameTmp)
-	}()
-	defer fo.Close()
 
-	i := 0
-	for k, v := range data {
-		i++
+func GetExtractKmersIterClbk( kmerSize int, data *Data ) func(*string)bool {
+        log.Println("GetExtractKmersIterClbk")
 
-		if as == "fasta" {
-			fmt.Fprintf(fo, ">%d count: %d\n%s\n\n", i, v, k)
-		} else
-		if as == "list"  {
-			fmt.Fprintf(fo, "%s\n", k)
-		} else
-		if as == "csv"  {
-			fmt.Fprintf(fo, "%s\t%d\n", k, v)
-		}
+	sequence := make([]byte, 0)
+	seqName  := ""
+
+	lineTot := 0
+	lineSeq := 0
+
+	ExtractKmersIterClbk := func(line *string)bool {
+		lineTot++
+                if (*line)[0] == '>' {
+                        if seqName == "" { // first
+                                seqName  = strings.TrimSpace((*line)[1:])
+                                log.Println("Seq", seqName, "STARTING")
+                                return true
+
+                        } else { //next
+                                log.Println("Seq", seqName, "DONE"    )
+                                return false
+
+                        }
+                } else {
+			lineSeq++
+                        if len(*line) != 0 {
+				//log.Println(len(*line), *line)
+
+				sequence = append( sequence, []byte(*line)... )
+
+				if len(sequence) >= kmerSize {
+					ExtractKmersFromSeq(sequence, seqName, kmerSize, data)
+					sequence = sequence[len(sequence)-kmerSize+1:]
+				}
+
+				//log.Println(len(sequence), string(sequence))
+
+				//log.Println()
+                        }
+
+                        return true
+                }
 	}
 
-	fo.Close()
-
-	os.Rename(outFileNameTmp, outFileName)
+	return ExtractKmersIterClbk
 }
+
+
 
 
 

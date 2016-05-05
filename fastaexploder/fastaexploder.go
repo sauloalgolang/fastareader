@@ -1,5 +1,5 @@
 /*
-Package fastareader reads a fasta file using go routines
+Package fastaexploder splits a fasta file in its constituint sequences
 */
 
 package main
@@ -23,10 +23,11 @@ import (
 // compile passing -ldflags "-X main.Build <build sha1>"
 var Build string
 
+
 // Error codes returned by failures to parse
 var (
-	ErrInternal   = errors.New("fastareader: internal error"  )
-	ErrInvalidSeq = errors.New("fastareader: invalid sequence")
+	ErrInternal   = errors.New("fastaexploder: internal error"  )
+	ErrInvalidSeq = errors.New("fastaexploder: invalid sequence")
 )
 
 
@@ -49,7 +50,7 @@ main: checks if index exists, creating it otherwise, read index and create a go 
 */
 func main() {
 	if Build != "" {
-		log.Println("fastareader build:", Build)
+		log.Println("fastaexploder build:", Build)
 	}
 
 
@@ -73,18 +74,20 @@ func main() {
 
 
 	var numCPU = runtime.GOMAXPROCS(0)
+	numCPU = 1
 
 	log.Println("numCPU",numCPU)
 
 
 	idxData         := fastaindex.ReadFastaIndexCreatingIfNotExists(filename)
-	seqData         := make([]*fastatools.SeqData, len(*idxData))
 
 	for _, idx := range *idxData {
 		idx.Print()
 	}
 
+	load_all := false
 
+	//seqData := make([]*fastatools.SeqData, len(*idxData))
 	log.Println("Reading File")
 	var limit  = make(chan int, numCPU)
 	var waiter = make(chan int)
@@ -92,16 +95,46 @@ func main() {
 		//idx.Print()
 
 		f := func (idx2 *fastaindex.IdxData) {
-			seqd := fastatools.ReadFastaSeq(filename, idx2.SeqPos)
-			log.Printf("RES: IDX: NAME '%s' ID %d SIZE %d POSITION %d FASTA: NAME '%s' SIZE %d\n", idx2.SeqName, idx2.SeqId, idx2.SeqSize, idx2.SeqPos, seqd.SeqName, seqd.Size())
-			if (( idx2.SeqName != seqd.SeqName ) || (idx2.SeqSize != seqd.Size())) {
-				log.Fatal(fmt.Sprintf("Sequence mismatch. expexted '%s', found '%s'. Expected size %d, found %d", idx2.SeqName, seqd.SeqName, idx2.SeqSize, seqd.Size()))
-				os.Exit(1)
+			ofName  := filename+"_"+idx2.SeqName+".fasta"
+			log.Println("Saving to", ofName)
+
+			fo, err := os.Create(ofName+".tmp")
+			check(err)
+
+			defer func() {
+				os.Remove(ofName+".tmp")
+			}()
+
+			defer fo.Close()
+
+
+			if ( load_all ) {
+				seqd := fastatools.ReadFastaSeq(filename, idx2.SeqPos)
+
+				log.Printf("RES: IDX: NAME '%s' ID %d SIZE %d POSITION %d FASTA: NAME '%s' SIZE %d\n", idx2.SeqName, idx2.SeqId, idx2.SeqSize, idx2.SeqPos, seqd.SeqName, seqd.Size())
+
+				if (( idx2.SeqName != seqd.SeqName ) || (idx2.SeqSize != seqd.Size())) {
+					log.Fatal(fmt.Sprintf("Sequence mismatch. expexted '%s', found '%s'. Expected size %d, found %d", idx2.SeqName, seqd.SeqName, idx2.SeqSize, seqd.Size()))
+					os.Exit(1)
+				}
+
+				seqd.SaveToFasta(fo)
+
+				seqd.Sequence = make([]byte,0)
+			} else {
+				log.Printf("READING: IDX: NAME '%s' ID %d SIZE %d POSITION %d\n", idx2.SeqName, idx2.SeqId, idx2.SeqSize, idx2.SeqPos)
+
+				fastatools.ReadFastaSeqIter(filename, idx2.SeqPos, fastatools.GetPipeFastaBackClbk(fo))
+
+				log.Printf("READ   : IDX: NAME '%s' ID %d SIZE %d POSITION %d\n", idx2.SeqName, idx2.SeqId, idx2.SeqSize, idx2.SeqPos)
 			}
-			seqData[idx2.SeqId - 1] = seqd
+
+			fo.Close()
+
+		        os.Rename(ofName+".tmp", ofName)
+
 			waiter <- 1
 		}
-
 
 		go func(w func(idx2 *fastaindex.IdxData), idx2 *fastaindex.IdxData) {
 			limit <- 1
@@ -112,13 +145,17 @@ func main() {
 
 	log.Println("Waiting")
 
+
 	for i := 1; i <= len(*idxData); i++ {
 		<-waiter
 	}
 
+
 	log.Println("Done")
 
+	/*
 	for _, seq := range seqData {
 		seq.Print()
 	}
+	*/
 }

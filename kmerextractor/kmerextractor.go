@@ -22,7 +22,9 @@ import (
 
 // http://www.golangbootcamp.com/book/tricks_and_tips
 // compile passing -ldflags "-X main.Build <build sha1>"
-var Build string
+var Build    string
+var load_all bool   = false
+
 
 // Error codes returned by failures to parse
 var (
@@ -158,25 +160,33 @@ func main() {
 	log.Println("Reading File")
 	limit           := make(chan int, threads)
 	waiter          := make(chan int         )
-	data            := make(map[string]int   )
+	//data            := make(map[string]int   )
+	data            := new( kmertools.Data )
+	data.New(kmerSize)
 
 	for _, idx := range *idxData {
 		//idx.Print()
 
 		f := func (idx2 *fastaindex.IdxData) {
-			seqd := fastatools.ReadFastaSeq(filename, idx2.SeqPos)
+			if ( load_all ) {
+				seqd := fastatools.ReadFastaSeq(filename, idx2.SeqPos)
 
-			log.Printf("RES: IDX: NAME '%s' ID %d SIZE %d POSITION %d FASTA: NAME '%s' SIZE %d\n", idx2.SeqName, idx2.SeqId, idx2.SeqSize, idx2.SeqPos, seqd.SeqName, seqd.Size())
+				log.Printf("RES: IDX: NAME '%s' ID %d SIZE %d POSITION %d FASTA: NAME '%s' SIZE %d\n", idx2.SeqName, idx2.SeqId, idx2.SeqSize, idx2.SeqPos, seqd.SeqName, seqd.Size())
 
-			if (( idx2.SeqName != seqd.SeqName ) || (idx2.SeqSize != seqd.Size())) {
-				log.Fatal(fmt.Sprintf("Sequence mismatch. expexted '%s', found '%s'. Expected size %d, found %d", idx2.SeqName, seqd.SeqName, idx2.SeqSize, seqd.Size()))
-				os.Exit(1)
+				if (( idx2.SeqName != seqd.SeqName ) || (idx2.SeqSize != seqd.Size())) {
+					log.Fatal(fmt.Sprintf("Sequence mismatch. expexted '%s', found '%s'. Expected size %d, found %d", idx2.SeqName, seqd.SeqName, idx2.SeqSize, seqd.Size()))
+					os.Exit(1)
+				}
+
+				//seqData[idx2.SeqId - 1] = seqd
+				kmertools.ExtractKmers(seqd, kmerSize, data)
+
+				seqd.Sequence = make([]byte,0)
+			} else {
+				log.Printf("READING: IDX: NAME '%s' ID %d SIZE %d POSITION %d\n", idx2.SeqName, idx2.SeqId, idx2.SeqSize, idx2.SeqPos)
+				fastatools.ReadFastaSeqIter(filename, idx2.SeqPos, kmertools.GetExtractKmersIterClbk( kmerSize, data ))
+				log.Printf("READ   : IDX: NAME '%s' ID %d SIZE %d POSITION %d\n", idx2.SeqName, idx2.SeqId, idx2.SeqSize, idx2.SeqPos)
 			}
-
-			//seqData[idx2.SeqId - 1] = seqd
-			kmertools.ExtractKmers(seqd, kmerSize, data)
-
-			seqd.Sequence = make([]rune,0)
 
 			waiter <- 1
 		}
@@ -201,12 +211,14 @@ func main() {
 	log.Println("Done Counting")
 
 
-	log.Println("Kmers", len(data))//, data)
+	log.Println("Kmers Total ", data.Total)
+	log.Println("Kmers Unique", data.Len())
 
 
 	outFileName     := fmt.Sprintf("%s_%d.kmers.%s", filename, kmerSize, format)
 	log.Println("Saving to", outFileName)
-	kmertools.SaveKmers(outFileName, format, data)
+
+	data.SaveAs(outFileName, format)
 
 
 	log.Println("Done")

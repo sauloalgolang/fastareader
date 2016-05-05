@@ -48,6 +48,7 @@ func (idx *IdxData) Print () {
 }
 
 func (idx *IdxData) Write (file *os.File) {
+	log.Println("Writing IDX")
 	fmt.Fprintf(file, "%s\t%d\t%d\t%d\n", idx.SeqName, idx.SeqId, idx.SeqSize, idx.SeqPos)
 }
 
@@ -56,7 +57,7 @@ func (idx *IdxData) Read (line string) {
 
 	//log.Println(cols, len(cols))
 
-	idx.SeqName   =              cols[0]
+	idx.SeqName   =                  cols[0]
 	idx.SeqId  ,_ = strconv.Atoi(    cols[1]        )
 	idx.SeqSize,_ = strconv.ParseInt(cols[2], 10, 64)
 	idx.SeqPos ,_ = strconv.ParseInt(cols[3], 10, 64)
@@ -136,6 +137,10 @@ func CreateFastaIndex(filename string) {
   	}
 
 	idx.Print()
+	if idx.SeqName != "" {
+		idx.Print()
+		idx.Write(fo)
+	}
 
 	fo.Close()
 	os.Rename(idxNameTmp, idxName)
@@ -192,6 +197,10 @@ func ReadFastaIndex(filename string) *[]*IdxData {
 		idx.Read(line)
 
 		data      = append(data, idx)
+	}
+
+	if len(data) == 0 {
+		log.Panic("NO DATA IN INDEX")
 	}
 
 	return &data
