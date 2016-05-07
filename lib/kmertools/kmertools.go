@@ -180,7 +180,7 @@ type Data struct {
 // http://stackoverflow.com/questions/4498998/how-to-initialize-members-in-go-struct
 func (c *Data) New(kmerSize int) {
     c.MaxSize = int(math.Pow(4,float64(kmerSize))/2)
-    c.v       = make(map[string]int, c.MaxSize)
+    c.v       = make(map[string]int, 0)//c.MaxSize)
 }
 
 // Inc increments the counter for the given key.
